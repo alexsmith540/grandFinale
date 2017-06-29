@@ -1,0 +1,26 @@
+{
+  "name": "grandFinale",
+  "version": "0.0.0",
+  "homepage": "https://github.com/alexsmith540/grandFinale",
+  "authors": [
+    "Alex Smith <alexsmith_540@yahoo.com>"
+  ],
+  "license": "MIT",
+  "private": true,
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "d3": "~4.8.0",
+    "dat.gui": "*",
+    "jquery": "~3.2.1",
+    "d3-geo-projection": "~0.2.16",
+    "moment": "~2.18.1",
+    "threejs-trackball-controls": "*",
+    "three.js": "~0.84.0"
+  }
+}

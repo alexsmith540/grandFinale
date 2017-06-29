@@ -1,0 +1,186 @@
+<html>
+<head>
+<link rel="stylesheet" type="text/css" href="css/main.css" />
+<script src="bower_components/three.js/three.min.js"></script>
+<script src="bower_components/threejs-trackball-controls/TrackballControls.js"></script>
+<script src="bower_components/jquery/dist/jquery.min.js"></script>
+<script src="bower_components/d3/d3.min.js"></script>
+<script src="https://d3js.org/d3-geo-projection.v2.min.js"></script>
+<script src="https://connect.soundcloud.com/sdk-2.0.0.js"></script>
+<script src="bower_components/dat.gui/dat.gui.min.js"></script>
+<script src="js/tuna/tuna-min.js"></script>
+<script src="js/main.js"></script>
+<script type="x-shader/x-vertex" id="vertexshader">
+  attribute float size;
+  attribute vec3 customColor;
+  attribute vec3 sphericalPosition;
+  attribute vec3 flatPosition;
+  attribute float frequency;
+  attribute float alpha;
+  attribute float character;
+  attribute vec3 ringPosition;
+  uniform float amplitude;
+  uniform bool isSpherical;
+  uniform vec3 ringColor;
+  uniform bool isRingLinear;
+  uniform bool isRing;
+  varying vec3 vColor;
+  varying float alphaState;
+  varying float isRingMode;
+  varying float characterState;
+  float PI = 3.141517;
+  void main() {
+    if(isRing){
+      isRingMode = 1.0;
+    }
+    else{
+      isRingMode = 0.0;
+    }
+    alphaState = alpha;
+    characterState = character;
+    vColor = customColor;
+    if(isRing){
+      alphaState = 0.5;
+      if(alpha <= 0.1){
+        vColor = vec3(0.08,0.08,0.08);
+      }
+      else{
+        alphaState = 0.5;
+        //vColor = vec3(alpha,0.07843,alpha*0.6705);
+        vColor = vec3(alpha*ringColor.x,alpha*ringColor.y,alpha*ringColor.z);
+      }
+    }
+    vec3 newPosition = position;
+    vec3 targetPosition = position;
+    /*targetPosition.x = targetPosition.x * 1.618;
+    targetPosition.y = targetPosition.y * 1.618;*/
+    newPosition = newPosition * (amplitude + 1.0) + amplitude * targetPosition / 1.0;
+    //float x = sin(distance(newPosition,vec3(0.0,0.0,0.0))) * (512.0*amplitude);
+    if(!isSpherical && !isRing){
+      float y = cos(distance(newPosition,vec3(0.0,0.0,0.0))) * (512.0*amplitude);
+      
+      //newPosition.x = sphx;
+      //newPosition.y = sphy;
+      //newPosition.z = sphz;
+      //newPosition.x = x;
+      //newPosition.x = x;
+      newPosition.z = y;
+    }
+    else if(isRing){
+      //where the vec3 we pass in is x=radius, y=radian
+      float x = sin(ringPosition.y) * ringPosition.x;
+      float y = cos(ringPosition.y) * ringPosition.x;
+      float z = 0.0;
+      newPosition = vec3(x,y,x);
+      if(alpha <=0.1){
+        newPosition.z = cos(distance(newPosition,vec3(0.0,0.0,0.0))) * (128.0*amplitude);
+      }
+      else{
+        if(isRingLinear){
+          newPosition.z = 56.0*alpha;
+        }
+        else{
+          newPosition.z = cos(distance(newPosition,vec3(0.0,0.0,0.0))) * (128.0*alpha);
+        }
+        //newPosition.z = 56.0*alpha;
+        newPosition.z = cos(distance(newPosition,vec3(0.0,0.0,0.0))) * (128.0*alpha);
+      }
+      
+    }
+    else{
+      vec3 modeledPos = flatPosition * (amplitude + 1.0) + amplitude * targetPosition / 1.0;
+      modeledPos.y = cos(distance(modeledPos,vec3(0.0,0.0,0.0))) * (512.0*amplitude);
+      float rad = sphericalPosition.z;
+      //rad = rad + cos(distance(modeledPos,vec3(0.0,0.0,0.0))) * (512.0*amplitude);
+      float lat = sphericalPosition.x * (PI/180.0);
+      float lon = sphericalPosition.y * (PI/180.0);
+      float x = rad * cos(lat) * cos(lon);
+      float y = rad * cos(lat) * sin(lon);
+      float z = rad * sin(lat);
+      vec3 cart = vec3(x,y,z);
+      newPosition = cart;//newPosition * (amplitude*512.0 + 1.0) + (amplitude*512.0) * cart / 1.0;
+
+      /*var lat = lat * (Math.PI / 180);
+      var lon = lon * (Math.PI / 180);
+      var x = radius * Math.cos(lat)*Math.cos(lon);
+      var y = radius * Math.cos(lat)*Math.sin(lon);
+      var z = radius * Math.sin(lat);
+      */
+      /*newPosition = newPosition * (amplitude*120.0 + 1.0) + (amplitude*120.0) * sphericalPosition / 1.0;
+      newPosition.y = cos(distance(newPosition,vec3(0.0,0.0,0.0))) * (newPosition.z*amplitude*10.0);*/
+    }
+    //newPosition = newPosition * (amplitude * abs(sin(distance(newPosition, vec3(0.0,0.0,0.0)) / 100.0))+ 1.0);
+    vec4 mvPosition = modelViewMatrix * vec4( newPosition, 1.0 );
+    gl_PointSize = size * ( 300.0 / -mvPosition.z );
+    gl_Position = projectionMatrix * mvPosition;
+  }
+</script>
+
+<script type="x-shader/x-fragment" id="fragmentshader">
+  uniform vec3 color;
+  uniform sampler2D texture;
+  uniform sampler2D zeroTexture;
+  uniform sampler2D oneTexture;
+  varying vec3 vColor;
+  varying float alphaState;
+  varying float characterState;
+  varying float isRingMode;
+  void main() {
+
+      gl_FragColor = vec4( color * vColor * alphaState, alphaState );
+    
+    if(isRingMode < 5.0){
+      gl_FragColor = gl_FragColor * texture2D( texture, gl_PointCoord );
+    }
+    else{
+      if(characterState == 1.0){
+        gl_FragColor = gl_FragColor * texture2D( oneTexture, gl_PointCoord );
+      }
+      else{
+        gl_FragColor = gl_FragColor * texture2D( zeroTexture, gl_PointCoord );
+      }
+    }
+    
+    
+  }
+</script>
+</head>
+<body>
+<div id="viz"></div>
+<audio id="soundcloudPlayer" controls="" autoplay="" preload autobuffer></audio>
+<div id="blurbArea">
+  <div class="body">
+    <div class="img">
+      <img src="img/saturn1.gif" />
+    </div>
+    <div class="text">
+      Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. <br />
+      - herp derpinson
+    </div>
+  </div>
+</div>
+<div class="bottomNav">
+  <ul class="trackList">
+    <li>Daft Punk</li>
+    <li>CHVRCHES</li>
+    <li>Herbie Hancock</li>
+    <li>Moby</li>
+  </ul>
+  <div class="frequencyWrap">
+    <div class="buttonGroup">
+      <div class="button">1</div>
+      <div class="button">2</div>
+      <div class="button">3</div>
+    </div>
+    <div class="flatFrequency">
+      <svg></svg>
+    </div>
+    <div class="buttonGroup">
+      <div class="button">4</div>
+      <div class="button">5</div>
+      <div class="button">6</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
