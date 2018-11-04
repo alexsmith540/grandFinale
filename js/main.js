@@ -832,4 +832,5 @@ GrandFinale.prototype.initDatGui = function(){
   })*/
   gui.add(guiParams,'startGuidedTour');
   gui.add(guiParams,'stopGuidedTour');
+  gui.close();
 }
