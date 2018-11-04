@@ -17,9 +17,10 @@ Very Special Thanks to Flying Lotus for creating the default tracks wired into t
 #################################
 
 To Launch:
-cd into the repo dir
-python -m SimpleHTTPServer
-then visit http://localhost:8000
+1. cd into the repo dir
+2. bower install (if you dont have bower, npm install -g bower)
+2. python -m SimpleHTTPServer
+3. then visit http://localhost:8000
 
 ```
 
