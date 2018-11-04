@@ -6,6 +6,9 @@ html,body{
   padding:0;
   margin:0;
 }
+#soundcloudPlayer{
+  display:none;
+}
 #viz{
   float:left;
   width:100%;
@@ -54,10 +57,11 @@ html,body{
   width:100%;
   height:15%;
   float:left;
-  border: 1px solid #666;
   position:absolute;
   left:0;
   bottom:0;
+  background:rgba(0,0,0,0.4);
+  padding-top:5px;
 }
 .trackList{
   width:100%;
@@ -87,9 +91,12 @@ html,body{
 }
 .flatFrequency{
   float:left;
-  width:50%;
-  background:rgba(255,255,255,0.1);
-  height:50%;
+  width:calc(80%);
+  margin-left:calc(10% - 1px);
+  background:rgba(255,255,255,0.0);
+  height:40%;
+  border-left: 1px solid rgba(255,255,255,0.5);
+  border-right: 1px solid rgba(255,255,255,0.5);;
 }
 
 .flatFrequency svg line.flatLine{
@@ -97,3 +104,141 @@ html,body{
   stroke-dasharray: 1 3;
 }
 
+.nowPlaying{
+  float:left;
+  width:100%;
+  height:50%; 
+}
+.trackWrap{
+  float:left;
+  width:80%;
+  margin-left:10%;
+  margin-right:10%;
+}
+.trackName{
+  width:50%;
+  float:left;
+}
+.trackURL input{
+  width:80%;
+  background:rgba(255,255,255,0.15);
+  border: 1px solid #333;
+  padding: 5px 10px;
+  font-size: 12px;
+  color:#666;
+  float:left;
+  outline:none;
+}
+.trackURL{
+  width:50%;
+  float:left;
+  opacity:0.0;
+  transition: opacity 0.2s linear;
+}
+.trackMetrics{
+  float:left;
+  width:100%;
+  height: 10px;
+}
+.currentBar{
+  width: 80%;
+  height: 1px;
+  padding: 3px 0px;
+  float: left;
+  margin-top: 6px;
+}
+.duration, .currentTime{
+  float:left;
+  width:calc(10% - 11px);
+}
+.duration{
+  border-left:1px solid rgba(255,255,255,0.5);
+  padding-left:10px;
+  text-align:left;
+}
+.currentTime{
+  border-right: 1px solid rgba(255,255,255,0.5);
+  text-align:right;
+  padding-right: 10px;
+}
+.playPause{
+  float:left;
+  border-radius: 50px;
+  width: 50px;
+  height: 50px;
+  vertical-align:middle;
+  line-height:50px;
+  text-align:center;
+  cursor:pointer;
+  background:rgba(254,0,209,0.2);
+  font-size:12px;
+  color:#ccc;
+  font-weight:100;
+  margin-left: calc(5% - 50px);
+  margin-top: calc(5% - 42px);
+  position:absolute;
+  transition: all 0.2s linear;
+}
+.playPause.isPaused{
+  position:fixed;
+  top:calc(50% - 100px);
+  left:calc(50% - 100px);
+  margin:0 !important;
+  width:200px;
+  height:200px;
+  line-height:200px;
+  border-radius:100px;
+}
+
+.go{
+  float:left;
+  width: 20px;
+  height:20px;
+  border-radius:20px;
+  border:1px solid #333;
+  line-height: 20px;
+  vertical-align: middle;
+  font-size: 10px;
+  color: #ccc;
+  text-align:center;
+  background:rgba(255,255,252,0.1);
+  cursor:pointer;
+  margin: 3px 5px;
+}
+a.trackTitle, a.trackArtist{
+  text-decoration:none;
+  color:#ccc;
+  text-overflow: ellipsis;
+}
+a.trackTitle{
+  font-weight:500;
+  color:#ddd;
+}
+a.trackArtist{
+  font-weight:100;
+  color:#ccc;
+}
+.bottomNav:hover .trackURL{
+  opacity:1.0;
+}
+
+.poweredBy{
+  position:fixed;
+  bottom:0;
+  right:0;
+  width:52px;
+  height:16px;
+  background-image: url('../img/poweredBy.png');
+  background-size: 52px 16px;
+  transition: all 0.1s linear;
+}
+.poweredBy a{
+  float:left;
+  width:100%;
+  height:100%;
+}
+.poweredBy:hover{
+  width:104px;
+  height:32px;
+  background-size: 104px 32px;
+}

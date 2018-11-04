@@ -8,7 +8,7 @@
 <script src="https://d3js.org/d3-geo-projection.v2.min.js"></script>
 <script src="https://connect.soundcloud.com/sdk-2.0.0.js"></script>
 <script src="bower_components/dat.gui/dat.gui.min.js"></script>
-<script src="js/tuna/tuna-min.js"></script>
+<script src="bower_components/tuna/tuna-min.js"></script>
 <script src="js/main.js"></script>
 <script type="x-shader/x-vertex" id="vertexshader">
   attribute float size;
@@ -147,7 +147,7 @@
 </head>
 <body>
 <div id="viz"></div>
-<audio id="soundcloudPlayer" controls="" autoplay="" preload autobuffer></audio>
+<audio id="soundcloudPlayer" controls="" preload autobuffer></audio>
 <div id="blurbArea">
   <div class="body">
     <div class="img">
@@ -160,27 +160,32 @@
   </div>
 </div>
 <div class="bottomNav">
-  <ul class="trackList">
-    <li>Daft Punk</li>
-    <li>CHVRCHES</li>
-    <li>Herbie Hancock</li>
-    <li>Moby</li>
-  </ul>
-  <div class="frequencyWrap">
-    <div class="buttonGroup">
-      <div class="button">1</div>
-      <div class="button">2</div>
-      <div class="button">3</div>
+  <div class="nowPlaying">
+    <div class="trackWrap">
+      <div class="trackName"></div>
+      <div class="trackURL">
+        <input type="text" placeholder="Paste a SoundCloud Song or Playlist URL" value="" />
+        <div class="go">go</div>
+      </div>
     </div>
+    
+    <div class="trackMetrics">
+      <div class="currentTime">00:00</div>
+      <div class="currentBar"></div>
+      <div class="duration">00:00</div>
+    </div>
+    <div class="playPause isPaused">play</div>
+    
+
+  </div>
+  <div class="frequencyWrap">
+    
     <div class="flatFrequency">
       <svg></svg>
     </div>
-    <div class="buttonGroup">
-      <div class="button">4</div>
-      <div class="button">5</div>
-      <div class="button">6</div>
-    </div>
+    
   </div>
+  <div class="poweredBy"><a href="https://soundcloud.com" target="_blank"></a></div>
 </div>
 </body>
 </html>

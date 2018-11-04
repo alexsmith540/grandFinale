@@ -21,6 +21,7 @@
     "d3-geo-projection": "~0.2.16",
     "moment": "~2.18.1",
     "threejs-trackball-controls": "*",
-    "three.js": "~0.84.0"
+    "three.js": "~0.84.0",
+    "tuna": "git@github.com:Theodeus/tuna.git"
   }
 }

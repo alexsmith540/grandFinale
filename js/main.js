@@ -5,6 +5,8 @@ $(document).ready(function(){
 var GrandFinale = function($el){
   var _this = this;
   this.tourIncVal = 0.01;
+  this.isPlaylist = false;
+  this.cancelCameraTrack = false;
   this.$el = $el;
   this.scene = new THREE.Scene();
   this.camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 10000 );
@@ -103,7 +105,7 @@ var GrandFinale = function($el){
   this.effects[_this.activeEffect].connect(this.output);
   this.output.connect(this.context.destination)*/
   this.useAllFrequencies = false;
-  this.reverseFrequencies = false;
+  this.reverseFrequencies = true;
   /*currentTrack,
   streamUrl;*/
   this.renderer = new THREE.WebGLRenderer();
@@ -128,7 +130,7 @@ var GrandFinale = function($el){
     SC.initialize({
       client_id: _this.clientID
     });
-    var defaultTrack = 'https://soundcloud.com/psbhq/the-other-side-public-service-broadcasting';
+    var defaultTrack = 'https://soundcloud.com/alexsmith540/sets/saturn';//'https://soundcloud.com/psbhq/the-other-side-public-service-broadcasting';
     var track_url = window.location.hash != '' ? ( window.location.hash.indexOf('http') >= 0 ? window.location.hash.substring(1) : 'https://soundcloud.com/'+window.location.hash.substring(1) ) : defaultTrack;
     _this.resolveTrack(track_url);
     console.log('trackurl',track_url);
@@ -148,14 +150,14 @@ var GrandFinale = function($el){
           setTimeout(function(){
             _this.player.currentTime = 0;
             _this.player.play();
-          },2000);
+          },5000);
         }
       }
       else{
         setTimeout(function(){
           _this.player.currentTime = 0;
           _this.player.play();
-        },2000)
+        },5000)
         
       }
       _this.setUIMeta();
@@ -174,11 +176,6 @@ var GrandFinale = function($el){
   this.saturnIcosGroup.add(mesh);
   this.saturnIcosGroup.add(this.saturnShadeIcos)
   this.scene.add(this.saturnIcosGroup);
-  var cassiniGeo = new THREE.IcosahedronGeometry(4,1);
-  var cassiniMat = new THREE.MeshBasicMaterial({color:0xffe400,opacity:0.5,transparent:true});
-  this.cassini = new THREE.Mesh(cassiniGeo,cassiniMat);
-  this.scene.add(this.cassini);
-  this.cassini.position.set(-512+256,-512+256,0);
   this.animate();
   this.initFlatFrequency();
 }
@@ -197,8 +194,20 @@ GrandFinale.prototype.initFlatFrequency = function(){
 }
 GrandFinale.prototype.resolveTrack = function(track_url){
   var _this = this;
-  SC.get('/resolve', { url: track_url }, function(sound) {
-    console.log('resolved track',sound);
+  SC.get('/resolve', { url: track_url }, function(sound,err) {
+
+    console.log('resolved track',sound,err);
+    if(sound == null && err){
+      //error loading track
+      if(err.message){
+        if(err.message.indexOf('403') >= 0){
+          alert('Uh-oh: This SoundCloud Artist does not permit Data API Sharing. Try Another Song.')
+        }
+        else{
+          alert('ERROR LOADING SOUNDCLOUD RESOURCE');
+        }
+      }
+    }
     if (sound.errors) {
         
         //errorCallback();
@@ -209,6 +218,7 @@ GrandFinale.prototype.resolveTrack = function(track_url){
         if(sound.kind=="playlist"){
           _this.soundCloudStream = sound;
           _this.currentTrack = sound;
+          _this.isPlaylist = true;
           _this.streamUrl = function(){
               return sound.tracks[_this.streamPlaylistIndex].stream_url + '?client_id=' + _this.clientID;
           }
@@ -218,10 +228,12 @@ GrandFinale.prototype.resolveTrack = function(track_url){
         }else{
           _this.soundCloudStream = sound;
           _this.currentTrack = sound;
+          _this.isPlaylist = false;
           _this.streamUrl = function(){ return sound.stream_url + '?client_id=' + _this.clientID; };
           _this.player.setAttribute('src', _this.streamUrl());
           _this.finishedLoading(_this.player);
           console.log('success making sound!',sound);
+
           _this.setUIMeta();
           
         }
@@ -230,10 +242,91 @@ GrandFinale.prototype.resolveTrack = function(track_url){
 }
 GrandFinale.prototype.setUIMeta = function(){
   //stub, where we display song meta info.
+  var _this = this;
+  var streamIndex = this.streamPlaylistIndex || 0;
+  var currentTrack = this.isPlaylist ? this.currentTrack.tracks[streamIndex] : this.currentTrack;
+  var linkTrack = $('<a class="trackTitle" href="'+currentTrack.permalink_url+'" target="_blank">'+currentTrack.title+'</a>')
+  var linkArtist = $('<a class="trackArtist" href="'+currentTrack.user.permalink_url+'" target="_blank">'+currentTrack.user.username+'</a>')
+  $('.nowPlaying .trackName').html(linkTrack);
+  $('.nowPlaying .trackName').append(' | ');
+  $('.nowPlaying .trackName').append(linkArtist);
+  //$('.nowPlaying .trackURL input').val(currentTrack.permalink_url)
+  var duration = currentTrack.duration/1000;
+  var m = Math.floor(duration/60);
+  if(m < 10){
+    m = '0'+m;
+  }
+  var ds = Math.floor(duration % 60);
+  if(ds < 10){
+    ds = '0'+ds;
+  }
+  $('.nowPlaying .duration').html(m+':'+ds)
+  var nowPlayingTime = this.player.currentTime;
+  var currentlyPaused = this.player.paused;
+  /*if(currentlyPaused){
+    $('.nowPlaying .playPause').html('play').addClass('isPaused');
+  }
+  else{
+    $('.nowPlaying .playPause').html('pause').removeClass('isPaused');
+  }*/
+  $('.nowPlaying .playPause').off('click').on('click',function(){
+    if(_this.player.paused){
+      _this.player.play();
+      
+      setTimeout(function(){_this.startTour();},10000);
+      $(this).html('pause').removeClass('isPaused')
+      startTO();
+    }
+    else{
+      _this.player.pause();
+      $(this).html('play').addClass('isPaused')
+      _this.cancelCameraTrack = true;
+      clearTO()
+    }
+  });
+  $('.trackURL .go').off('click').on('click',function(){
+    if($('.trackURL input').val() != ''){
+      window.location.hash = '';
+      window.location.href = '/#'+$('.trackURL input').val();
+      window.location.reload();
+    }
+  });
+  function startTO(){
+    clearTO();
+    _this.uiTimer = setInterval(function(){
+      var val = _this.player.currentTime;
+      var s = Math.floor(val);
+      var perc = s / duration;
+      perc = Math.floor(perc * 100);
+      var percAdd = perc+1 > 100 ? 100 : perc+1;
+      var bsString = 'linear-gradient(to right, rgba(255,255,255,0.5) 0%,rgba(255,255,255,0.5) '+(perc)+'%,rgba(255,255,255,0) '+(perc)+'%,rgba(255,255,255,0) 100%)'
+      $('.nowPlaying .currentBar').css('background',bsString);
+      var m = 0;
+      var s = Math.floor(val % 60);
+      if(s < 10){
+        s = '0'+s;
+      }
+      if(val > 60){
+        m = Math.floor(val / 60);
+        if(m < 10){
+          m = '0'+m;
+        } 
+      }
+      $('.nowPlaying .currentTime').html(m+':'+s)
+
+    },1000);
+  }
+  function clearTO(){
+    if(typeof _this.uiTimer != "undefined"){
+      clearInterval(_this.uiTimer);
+    }
+  }
+
 }
 //_sourceList = [];
 GrandFinale.prototype.finishedLoading = function(bufferList) {
   var _this = this;
+
   if(typeof _this.sourceList == "undefined"){
     this._sourceList = [];
   }
@@ -329,6 +422,10 @@ GrandFinale.prototype.startCameraTrack = function(points){
     var lerpedTarget = targetIn.clone().lerp(targetOut,toVal);
     _this.camera.position.set(lerpedPos.x,lerpedPos.y,lerpedPos.z);
     _this.controls.target.set(lerpedTarget.x,lerpedTarget.y,lerpedTarget.z);
+    if(_this.cancelCameraTrack){
+      _this.cancelCameraTrack = false;
+      return false;
+    }
     window.requestAnimationFrame(function(){
       increment();
     });
@@ -343,8 +440,9 @@ GrandFinale.prototype.setupParticles = function(data){
     texture:   { value: new THREE.TextureLoader().load( "img/spark0.png" ) },
     zeroTexture: { value: new THREE.TextureLoader().load( "img/zero.png")},
     oneTexture: { value: new THREE.TextureLoader().load( "img/one.png")},
-    ringColor: {value: new THREE.Vector3(0,160/255,254/255)},
-    isRingLinear:{value:true},
+    
+    ringColor: {value: new THREE.Vector3(0.996078431372549,0,0.820299884659746)},
+    isRingLinear:{value:false},
     isRing:{value:true},
     isSpherical: {value:false}
   };
@@ -411,7 +509,7 @@ GrandFinale.prototype.setupParticles = function(data){
       alpha[i*f+j] = 1.0;
       sizes[i*f+j] = 15;
       frequencies[i*f+j] = 0.0;
-      character[i*f+j] = Math.round(Math.random()*1.4);
+      character[i*f+j] = Math.round(Math.random()-0.25);
     })
   })
   //})
@@ -530,42 +628,44 @@ GrandFinale.prototype.updateAnalyserData = function(){
     _this.pointGeometry.attributes.alpha.needsUpdate = true;
     _this.pointGeometry.attributes.frequency.needsUpdate = true;
   }*/
-  var lines = this.flatSVG.select('g.lineGroup')
-    .selectAll('line')
-    .data(this.freqDomain);
-  lines
-    .attr('x1',function(d,i){
-      return _this.flatSVGXScale(i);
-    })
-    .attr('x2',function(d,i){
-      return _this.flatSVGXScale(i);
-    })
-    .attr('y1',function(d){
-      var diff = ( _this.flatSVGYScale.range()[1] - _this.flatSVGYScale(d) ) / 2;
-      return _this.flatSVGYScale.range()[0] + diff;
-    })
-    .attr('y2',function(d){
-      var diff = ( _this.flatSVGYScale.range()[1] - _this.flatSVGYScale(d) ) / 2;
-      return _this.flatSVGYScale.range()[1] - diff;//_this.flatSVGYScale.domain()[1] - diff/* + _this.flatSVGYScale(d)*/;
-    });
-  lines.enter()
-    .append('line')
-    .classed('flatLine',true)
-    .attr('x1',function(d,i){
-      return _this.flatSVGXScale(i);
-    })
-    .attr('x2',function(d,i){
-      return _this.flatSVGXScale(i);
-    })
-    .attr('y1',function(d){
-      var diff = ( _this.flatSVGYScale.domain()[1] - _this.flatSVGYScale(d) ) / 2;
-      return diff;
-    })
-    .attr('y2',function(d){
-      var diff = ( _this.flatSVGYScale.domain()[1] - _this.flatSVGYScale(d) ) / 2;
-      return diff + _this.flatSVGYScale(d);
-    });
-  lines.exit().remove();
+  if(!_this.player.paused){
+    var lines = this.flatSVG.select('g.lineGroup')
+      .selectAll('line')
+      .data(this.freqDomain);
+    lines
+      .attr('x1',function(d,i){
+        return _this.flatSVGXScale(i);
+      })
+      .attr('x2',function(d,i){
+        return _this.flatSVGXScale(i);
+      })
+      .attr('y1',function(d){
+        var diff = ( _this.flatSVGYScale.range()[1] - _this.flatSVGYScale(d) ) / 2;
+        return _this.flatSVGYScale.range()[0] + diff;
+      })
+      .attr('y2',function(d){
+        var diff = ( _this.flatSVGYScale.range()[1] - _this.flatSVGYScale(d) ) / 2;
+        return _this.flatSVGYScale.range()[1] - diff;//_this.flatSVGYScale.domain()[1] - diff;
+      });
+    lines.enter()
+      .append('line')
+      .classed('flatLine',true)
+      .attr('x1',function(d,i){
+        return _this.flatSVGXScale(i);
+      })
+      .attr('x2',function(d,i){
+        return _this.flatSVGXScale(i);
+      })
+      .attr('y1',function(d){
+        var diff = ( _this.flatSVGYScale.domain()[1] - _this.flatSVGYScale(d) ) / 2;
+        return diff;
+      })
+      .attr('y2',function(d){
+        var diff = ( _this.flatSVGYScale.domain()[1] - _this.flatSVGYScale(d) ) / 2;
+        return diff + _this.flatSVGYScale(d);
+      });
+    lines.exit().remove();
+  }
 }
 GrandFinale.prototype.animate = function(){
   var _this = this;
@@ -581,6 +681,34 @@ GrandFinale.prototype.animate = function(){
   this.updateAnalyserData();
   this.controls.update();
   this.renderer.render(this.scene,this.camera);
+}
+GrandFinale.prototype.startTour = function(){
+  var _this = this;
+  var points = [];
+  var origin = _this.camera.position.clone();
+  var opposite = _this.camera.position.clone().setZ(origin.clone().z*-1);
+
+  for(var i=1;i<21;i+=1){
+    if(i % 3 == 0){
+      var tgt = new THREE.Vector3(-512,-512,0);
+      var o = Math.random();
+      if(o < 0.5){
+        points.push({position:opposite,target:new THREE.Vector3(-512,-512,0)});
+          }
+      else{
+        points.push({position:origin,target:new THREE.Vector3(-512,-512,0)});
+      }
+    }
+    else{
+      var tgt = new THREE.Vector3(Math.cos(i/21*Math.PI*2)*(512+Math.random()*512),Math.sin(i/21*Math.PI*2)*(512+Math.random()*512),0);
+    }
+    var deg = Math.random()*Math.PI*2;
+    var rad = 600 + Math.random()*800;
+    var pos = new THREE.Vector3(Math.cos(deg)*rad,Math.sin(deg)*rad,(-Math.random()+Math.random() )* 1024);
+    
+    points.push({position:pos,target:tgt});
+  }
+  _this.startCameraTrack(points);
 }
 GrandFinale.prototype.initDatGui = function(){
   var _this = this;
@@ -616,12 +744,12 @@ GrandFinale.prototype.initDatGui = function(){
     toggleRightAlignedBlurb: function(){
       $('#blurbArea').addClass('rightAligned').toggle();
     },*/
-    ringColor:[0,160,254],
+    ringColor:[0.996078431372549*255,0,0.820299884659746*255],
     useAllRingFrequencies: _this.useAllFrequencies,
     reverseFrequencies: _this.reverseFrequencies,
     LinearOrMagnetizeRings: _this.uniforms.isRingLinear.value,
     guidedTourSpeed:20,
-    effect:'phaser',
+    /*effect:'phaser',*/
     startGuidedTour:function(){
 
       var points = [];
@@ -649,6 +777,9 @@ GrandFinale.prototype.initDatGui = function(){
         points.push({position:pos,target:tgt});
       }
       _this.startCameraTrack(points);
+    },
+    stopGuidedTour:function(){
+      _this.cancelCameraTrack = true;
     }
   }
   var gui = new dat.GUI();
@@ -662,6 +793,7 @@ GrandFinale.prototype.initDatGui = function(){
     console.log('val',val);
     _this.uniforms.ringColor.value = new THREE.Vector3(val[0]/255,val[1]/255,val[2]/255);
     var color = new THREE.Color();
+    $('.playPause').css('background','rgba('+val[0]+','+val[1]+','+val[2]+',0.2)')
     color.r = _this.uniforms.ringColor.value.x;
     color.g = _this.uniforms.ringColor.value.y;
     color.b = _this.uniforms.ringColor.value.z;
@@ -684,7 +816,7 @@ GrandFinale.prototype.initDatGui = function(){
   speed.onChange(function(val){
     _this.tourIncVal = val/50 * 0.05;
   });
-  var effect = gui.add(guiParams,'effect',['phaser','bitcrusher','pingPongDelay','moog','wahwah','tremolo', 'delay']);
+  /*var effect = gui.add(guiParams,'effect',['phaser','bitcrusher','pingPongDelay','moog','wahwah','tremolo', 'delay']);
   effect.onChange(function(val){
     var effect = _this.effects[_this.activeEffect];
     effect.disconnect();
@@ -697,7 +829,7 @@ GrandFinale.prototype.initDatGui = function(){
     _this.input.connect(_this.effects[val]);
     _this.effects[val].connect(_this.output);
     _this.activeEffect = val;
-  })
+  })*/
   gui.add(guiParams,'startGuidedTour');
-
+  gui.add(guiParams,'stopGuidedTour');
 }
