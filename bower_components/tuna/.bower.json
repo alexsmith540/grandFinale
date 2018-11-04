@@ -1,0 +1,14 @@
+{
+  "name": "tuna",
+  "homepage": "https://github.com/Theodeus/tuna",
+  "_release": "aebce4068e",
+  "_resolution": {
+    "type": "branch",
+    "branch": "master",
+    "commit": "aebce4068e5a05ecf62362e112ddd35f517c0d3f"
+  },
+  "_source": "git@github.com:Theodeus/tuna.git",
+  "_target": "*",
+  "_originalSource": "git@github.com:Theodeus/tuna.git",
+  "_direct": true
+}
