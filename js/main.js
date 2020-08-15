@@ -2,8 +2,145 @@ var app;
 $(document).ready(function(){
   app = new GrandFinale($('#viz'));
 })
+
+var QueryString = function () {
+  // This function is anonymous, is executed immediately and 
+  // the return value is assigned to QueryString!
+  var query_string = {};
+  var query = window.location.search.substring(1);
+  var vars = query.split("&");
+  for (var i=0;i<vars.length;i++) {
+    var pair = vars[i].split("=");
+        // If first entry with this name
+    if (typeof query_string[pair[0]] === "undefined") {
+      query_string[pair[0]] = decodeURIComponent(pair[1]);
+        // If second entry with this name
+    } else if (typeof query_string[pair[0]] === "string") {
+      var arr = [ query_string[pair[0]],decodeURIComponent(pair[1]) ];
+      query_string[pair[0]] = arr;
+        // If third or later entry with this name
+    } else {
+      query_string[pair[0]].push(decodeURIComponent(pair[1]));
+    }
+  } 
+  return query_string;
+}();
+
 var GrandFinale = function($el){
   var _this = this;
+  this.spotifyApi = new SpotifyWebApi();
+  this.spotifyClientID = "2514ac6b6ca448acb004884509e217d1";
+  //DEV:
+  //this.spotifyRedirectURI = "http://localhost:8001/";
+  
+  //PROD:
+  this.spotifyRedirectURI = "https://alexsmith540.github.io/grandFinale/";
+
+  if(localStorage.getItem('verifier') == null){
+    localStorage.setItem('verifier',this.getSpotifyVerifier());
+  }
+  
+  this.spotifyVerif = localStorage.getItem('verifier');
+
+  if(typeof localStorage.getItem('tokenExpires') != null){
+    let expires = parseInt(localStorage.getItem('tokenExpires'));
+    if(expires < new Date().getTime()){
+      //has expired
+      localStorage.removeItem('spotifyCode');
+      localStorage.removeItem('refreshToken');
+      $('#loginToSpotify #instruction').hide();
+      $('#loginToSpotify #loginPage').show();
+      $('#loginToSpotify').addClass('showing').removeClass('instructionShowing');
+    }
+    else{
+      let diff =  expires - new Date().getTime() - 2000;
+      if(diff > 0){
+        setTimeout(()=>{
+          this.refreshToken();
+        },diff)
+      }
+      else{
+        this.refreshToken();
+      }
+    }
+  }
+  if(typeof QueryString['code'] != "undefined" && localStorage.getItem('spotifyCode') == null){
+    $.post('https://accounts.spotify.com/api/token',{
+      client_id: this.spotifyClientID,
+      grant_type: 'authorization_code',
+      code:QueryString['code'],
+      redirect_uri: this.spotifyRedirectURI,
+      code_verifier: this.spotifyVerif//btoa('2e2e4f3453f4c8cef3838cc8306b848f1215a368d9e341f42d4f686f8b1a2300')
+    },(data)=>{
+      console.log('data received back',data);
+      let token = data.access_token;
+      let refreshToken = data.refresh_token;
+      let expires = new Date().getTime() + (data.expires_in * 1000);
+
+      localStorage.setItem('spotifyCode',token);
+      localStorage.setItem('spotifyRefreshCode',refreshToken);
+      localStorage.setItem('tokenExpires',expires);
+      setTimeout(()=>{
+        this.refreshToken();
+      },(data.expires_in-10) * 1000)
+      $('#loginToSpotify #instruction').show();
+      $('#loginToSpotify #loginPage').hide();
+      $('#loginToSpotify').addClass('showing').addClass('instructionShowing');
+      this.spotifyApi.setAccessToken(localStorage.getItem('spotifyCode'));
+      this.pollSpotifyConnection();
+    })
+    
+  }
+  if(localStorage.getItem('spotifyCode') == null && typeof QueryString['code'] == "undefined"){
+    //request a token
+    setTimeout(()=>{
+      $('#loginToSpotify').addClass('showing');  
+      $('#loginToSpotify #login').off('click').on('click',()=>{
+        this.loginToSpotify();
+      })
+    },200)
+    
+  }
+
+  if(localStorage.getItem('spotifyCode') != null){
+    this.spotifyApi.setAccessToken(localStorage.getItem('spotifyCode'));
+    this.pollSpotifyConnection();
+  }
+  
+  this.spotifyApi
+  .getUserPlaylists() // note that we don't pass a user id
+  .then(
+    function (data) {
+      console.log('User playlists', data);
+    },
+    function (err) {
+      console.error(err);
+    }
+  );
+
+  $('#skipNav .button').off('click').on('click',(e)=>{
+    let id = $(e.target).attr('id');
+    clearInterval(this.vizInterval);
+    if(id == 'next'){
+      this.spotifyApi.skipToNext();
+    }
+    if(id == 'prev'){
+      this.spotifyApi.skipToPrevious();
+    }
+    setTimeout(()=>{
+      this.getCurrentTrackInfo();
+    },500)
+  })
+
+  //this.spotifyApi.getAudioAnalysisForTrack()
+  //get progress: this.spotifyApi.getMyCurrentPlayingTrack() .result.progress_ms
+  //app.spotifyApi.pause()
+  //app.spotifyApi.play()
+  //app.spotifyApi.skipToPrevious()
+  //app.spotifyApi.skipToNext()
+
+  //this.spotifyApi.getAudioAnalysisForTrack("5U1TBqjMgBoWS833c8lPuc")
+
   this.tourIncVal = 0.01;
   this.isPlaylist = false;
   this.cancelCameraTrack = false;
@@ -13,99 +150,16 @@ var GrandFinale = function($el){
   this.clientID = '9c1d801461f8c38a5ccd153c281cf3f0'; //for soundcloud
   this.soundCloudStream = {},
   this.streamPlaylistIndex = 0;
-  window.AudioContext = window.AudioContext || window.webkitAudioContext;
   
-  this.context = new AudioContext();
-  this.tuna = new Tuna(this.context);
-  this.effects = {};
-  this.effects.bitcrusher = new this.tuna.Bitcrusher({
-    bits: 2,          //1 to 16
-    normfreq: 0.1,    //0 to 1
-    bufferSize: 4096  //256 to 16384
-  });
-  this.effects.phaser = new this.tuna.Phaser({
-      rate: 1.2,                     //0.01 to 8 is a decent range, but higher values are possible
-      depth: 0.3,                    //0 to 1
-      feedback: 0.2,                 //0 to 1+
-      stereoPhase: 30,               //0 to 180
-      baseModulationFrequency: 700,  //500 to 1500
-      bypass: 0
-  });
-  this.effects.pingPongDelay = new this.tuna.PingPongDelay({
-      wetLevel: 0.5, //0 to 1
-      feedback: 0.3, //0 to 1
-      delayTimeLeft: 150, //1 to 10000 (milliseconds)
-      delayTimeRight: 200 //1 to 10000 (milliseconds)
-  });
-  this.effects.moog = new this.tuna.MoogFilter({
-      cutoff: 0.065,    //0 to 1
-      resonance: 3.5,   //0 to 4
-      bufferSize: 4096  //256 to 16384
-  });
-  this.effects.wahwah = new this.tuna.WahWah({
-      automode: true,                //true/false
-      baseFrequency: 0.5,            //0 to 1
-      excursionOctaves: 2,           //1 to 6
-      sweep: 0.2,                    //0 to 1
-      resonance: 10,                 //1 to 100
-      sensitivity: 0.5,              //-1 to 1
-      bypass: 0
-  });
-  this.effects.tremolo = new this.tuna.Tremolo({
-      intensity: 0.3,    //0 to 1
-      rate: 4,         //0.001 to 8
-      stereoPhase: 0,    //0 to 180
-      bypass: 0
-  });
-  this.effects.delay = new this.tuna.Delay({
-    feedback: 0.45,    //0 to 1+
-    delayTime: 150,    //1 to 10000 milliseconds
-    wetLevel: 0.25,    //0 to 1+
-    dryLevel: 1,       //0 to 1+
-    cutoff: 2000,      //cutoff frequency of the built in lowpass-filter. 20 to 22050
-    bypass: 0
-  });
-  this.effects.overdrive = new this.tuna.Overdrive({
-    outputGain: 0.5,         //0 to 1+
-    drive: 0.7,              //0 to 1
-    curveAmount: 1,          //0 to 1
-    algorithmIndex: 0,       //0 to 5, selects one of our drive algorithms
-    bypass: 0
-  });
-  this.effects.compressor = new this.tuna.Compressor({
-    threshold: -1,    //-100 to 0
-    makeupGain: 1,     //0 and up (in decibels)
-    attack: 1,         //0 to 1000
-    release: 0,        //0 to 3000
-    ratio: 4,          //1 to 20
-    knee: 5,           //0 to 40
-    automakeup: true,  //true/false
-    bypass: 0
-  });
-  this.effects.convolver = new this.tuna.Convolver({
-    highCut: 22050,                         //20 to 22050
-    lowCut: 20,                             //20 to 22050
-    dryLevel: 1,                            //0 to 1+
-    wetLevel: 1,                            //0 to 1+
-    level: 1,                               //0 to 1+, adjusts total output of both wet and dry
-    impulse: "impulses/impulse_rev.wav",    //the path to your impulse response
-    bypass: 0
-}); 
-
-  this.activeEffect = 'wahwah';
-  /*this.cabinet = new tuna.Cabinet({
-      makeupGain: 1,                                 //0 to 20
-      impulsePath: "impulses/impulse_guitar.wav",    //path to your speaker impulse
-      bypass: 0
-  });*/
+  
 
   /*this.input = this.context.createGain();
   this.output = this.context.createGain();
   this.input.connect(this.effects[_this.activeEffect]);
   this.effects[_this.activeEffect].connect(this.output);
   this.output.connect(this.context.destination)*/
-  this.useAllFrequencies = false;
-  this.reverseFrequencies = true;
+  this.useAllFrequencies = true;
+  this.reverseFrequencies = false;
   /*currentTrack,
   streamUrl;*/
   this.renderer = new THREE.WebGLRenderer();
@@ -123,47 +177,8 @@ var GrandFinale = function($el){
   $.get('data/cassini2.json',function(data){
     _this.setupParticles(data);
     _this.initDatGui();
-    if(typeof SC != "undefined"){
-    //soundcloud API is here...
-    _this.player = document.getElementById('soundcloudPlayer');
-    _this.player.crossOrigin = "anonymous";
-    SC.initialize({
-      client_id: _this.clientID
-    });
-    var defaultTrack = 'https://soundcloud.com/alexsmith540/sets/saturn';//'https://soundcloud.com/psbhq/the-other-side-public-service-broadcasting';
-    var track_url = window.location.hash != '' ? ( window.location.hash.indexOf('http') >= 0 ? window.location.hash.substring(1) : 'https://soundcloud.com/'+window.location.hash.substring(1) ) : defaultTrack;
-    _this.resolveTrack(track_url);
-    console.log('trackurl',track_url);
-    //listener for next songs
-    $('#soundcloudPlayer').bind('ended',function(e){
-      console.log('song ended!')
-      if(_this.soundCloudStream.kind == 'playlist'){
-        _this.streamPlaylistIndex++;
-        if(typeof _this.soundCloudStream.tracks[_this.streamPlaylistIndex] == "undefined"){
-          _this.streamPlaylistIndex = 0; 
-        }
-        if(typeof _this.soundCloudStream.tracks[_this.streamPlaylistIndex] != "undefined"){
-          currentTrack = _this.soundCloudStream.tracks[_this.streamPlaylistIndex];
-          track_url = _this.soundCloudStream.tracks[_this.streamPlaylistIndex].stream_url;
-          console.log('and new trackurl',track_url);
-          _this.player.setAttribute('src',track_url+'?client_id='+_this.clientID);
-          setTimeout(function(){
-            _this.player.currentTime = 0;
-            _this.player.play();
-          },5000);
-        }
-      }
-      else{
-        setTimeout(function(){
-          _this.player.currentTime = 0;
-          _this.player.play();
-        },5000)
-        
-      }
-      _this.setUIMeta();
-    });
+    _this.setUIMeta();
     
-  }
   })
   this.saturnIcosGroup = new THREE.Object3D();
   var icos = new THREE.IcosahedronGeometry(256,1);
@@ -179,6 +194,278 @@ var GrandFinale = function($el){
   this.animate();
   this.initFlatFrequency();
 }
+GrandFinale.prototype.getCurrentTrackInfo = function(){
+  //this.spotifyApi.getAudioAnalysisForTrack()
+  //get progress: this.spotifyApi.getMyCurrentPlayingTrack() .result.progress_ms
+  this.spotifyApi.getMyCurrentPlayingTrack().then(data=>{
+    console.log('current track',data);
+    let timeNow = new Date().getTime();
+    data.timestamp = timeNow;
+    if(data.is_playing){
+      if(typeof data.item != "undefined"){
+        
+        this.spotifyApi.getAudioAnalysisForTrack(data.item.id).then(trackAnalysis=>{
+          console.log('analysis',trackAnalysis);
+          
+          this.updateUIMeta(data)
+          this.startTrackPlayback(data,trackAnalysis);
+        }).catch(err=>{
+
+        })
+      }
+    }
+    else{
+      this.spotifyApi.play().then(()=>{
+        if(typeof data.item != "undefined"){
+          this.spotifyApi.getAudioAnalysisForTrack(data.item.id).then(trackAnalysis=>{
+            console.log('analysis',trackAnalysis);
+            this.updateUIMeta(data)
+            this.startTrackPlayback(data,trackAnalysis);
+          }).catch(err=>{
+            
+          })
+        }
+      }).catch(err=>{
+        console.log('error playing track',JSON.parse(err.response));
+        this.showErrorMessage(JSON.parse(err.response));
+      })
+    }
+    
+  }).catch(err=>{
+    console.log('error fetching current track',err);
+  })
+}
+GrandFinale.prototype.showErrorMessage = function(msg){
+
+  $('#errorMessage #message').html(msg.error.message);
+  $('#errorMessage #resolution').html('')
+  if(msg.error.reason == "NO_ACTIVE_DEVICE"){
+    $('#errorMessage #resolution').html('Open the Spotify App on any device and play a song, then click "connect" again.')
+    clearInterval(this.vizInterval);
+    this.cancelCameraTrack = true;
+    $('.playPause').html('connect').addClass('isPaused');
+  }
+  $('#errorMessage').show();
+  $('#errorMessage #close').off('click').on('click',()=>{
+    $('#errorMessage').hide();
+  })
+}
+GrandFinale.prototype.updateUIMeta = function(data){
+  let trackLink = data.item.external_urls.spotify;
+  let artistLink = data.item.album.external_urls.spotify
+  let albumImage = data.item.album.images[0].url;
+  var linkTrack = $('<a class="trackTitle" href="'+trackLink+'" target="_blank">'+data.item.name+'</a>')
+  var linkArtist = $('<a class="trackArtist" href="'+artistLink+'" target="_blank">'+data.item.album.name+'</a>')
+  $('.nowPlaying .trackImage').html('<img class="albumImage" src="'+albumImage+'" />')
+  $('.nowPlaying .trackName').html(linkTrack);
+  $('.nowPlaying .trackName').append(' | ');
+  $('.nowPlaying .trackName').append(linkArtist);
+  $('.nowPlaying .trackName').append('<div class="artistName">'+data.item.album.artists[0].name+'</div>')
+}
+GrandFinale.prototype.refreshSpotifyToken = function(){
+  $.post('https://accounts.spotify.com/api/token',{
+    grant_type:'refresh_token',
+    refresh_token: localStorage.getItem('refreshToken'),
+    client_id:this.spotifyClientID
+  },(data)=>{
+    let token = data.access_token;
+    let refreshToken = data.refresh_token;
+    let expires = new Date().getTime() + (data.expires_in * 1000);
+    localStorage.setItem('spotifyCode',token);
+    this.spotifyApi.setAccessToken(localStorage.getItem('spotifyCode'));
+    localStorage.setItem('refreshToken',refreshToken);
+    localStorage.setItem('tokenExpires',expires);
+    setTimeout(()=>{
+      console.log('to refresh token')
+      this.refreshToken();
+    },(data.expires_in-10)*1000)
+  })
+}
+GrandFinale.prototype.loginToSpotify = function(){
+  //request a token
+  let scopes = "user-modify-playback-state user-read-playback-position user-read-playback-state user-read-currently-playing user-read-recently-played";
+  
+  let url = 'https://accounts.spotify.com/authorize'
+  this.getSpotifyChallenge(this.spotifyVerif).then(challenge=>{
+    url += '?response_type=code' + '&client_id=' + this.spotifyClientID ;
+    url += '&scope=' + encodeURIComponent(scopes) ;
+    url += '&redirect_uri=' + encodeURIComponent(this.spotifyRedirectURI);
+    url += '&code_challenge_method=S256'
+    url += '&code_challenge='+ challenge;
+
+    window.location.href = url;
+  });
+
+}
+GrandFinale.prototype.pollSpotifyConnection = function(){
+
+  this.spotifyApi.getMyCurrentPlayingTrack().then(data=>{
+    //console.log('poll res',data,thpeo);
+    if(data == ""){
+      $('#loginToSpotify #instruction').show();
+      $('#loginToSpotify #loginPage').hide();
+      $('#loginToSpotify').addClass('showing').addClass('instructionShowing');
+      //no active track, 
+      this.trackCheckInterval = setInterval(()=>{
+        this.spotifyApi.getMyCurrentPlayingTrack().then(data=>{
+          console.log('polling')
+          if(data != ""){
+            clearInterval(this.trackCheckInterval);
+            //$('.playPause.isPaused').trigger('click')
+            $('.playPause').html('pause').removeClass('isPaused')
+            setTimeout(()=>{this.startTour();},2000);
+            $('#loginToSpotify').removeClass('showing')
+            this.getCurrentTrackInfo();
+          }
+        });
+      },500)
+    }
+    else{
+      //$('.playPause.isPaused').trigger('click')
+      $('.playPause').html('pause').removeClass('isPaused')
+      setTimeout(()=>{this.startTour();},2000);
+      $('#loginToSpotify').removeClass('showing')
+      this.getCurrentTrackInfo();
+    }
+  })
+}
+GrandFinale.prototype.startTrackPlayback = function(playbackMeta,trackAnalysis){
+  console.log('start track playback')
+  let loudnessExtent = d3.extent(trackAnalysis.segments,d=>{
+    return d.loudness_max;
+  });
+  let loudnessScale = d3.scaleLinear()
+    .domain(loudnessExtent)
+    .range([0.1,1.0])
+
+  let timeNow = new Date().getTime();
+  let durNow = ((timeNow - (playbackMeta.timestamp )) + playbackMeta.progress_ms)/1000 ;
+  
+  let binNow = trackAnalysis.segments.find((d,i)=>{
+    d.index = i;
+    return d.start >= durNow && durNow <= (d.start+d.duration);
+  });
+  console.log('binnow',binNow,durNow)
+  let binData = [];
+  binNow.pitches.map((pitch,i)=>{
+    binData.push(pitch*1000*loudnessScale(binNow.loudness_max),binNow.timbre[i]);
+    //return pitch * binNow.timbre[i] * loudnessScale(binNow.loudness_max);
+  });
+  let binIndex = binNow.index;
+  this.freqDomain = binData;
+  let binNext = typeof trackAnalysis.segments[binIndex+1] != "undefined" ? trackAnalysis.segments[binIndex+1] : binNow;
+  let binNextData = [];
+  binNext.pitches.map((pitch,i)=>{
+    binNextData.push(pitch*1000*loudnessScale(binNext.loudness_max),binNext.timbre[i]);
+    //return pitch * binNext.timbre[i] * loudnessScale(binNext.loudness_max);
+  });
+  this.uniforms.amplitude.value = NaN;//loudnessScale(binNow.loudness_max)*0.0;
+  this.freqDomainNext = binNextData;
+  this.freqDuration = binNow.duration;
+  
+  this.updateAnalyserData();
+  this.uniforms.duration.value = this.freqDuration;
+  this.uniforms.durationDelta.value = 0.0;
+  const _this = this;
+  let diff = 0;
+  let timeStart = new Date().getTime();
+  let timeout = setInterval(()=>{
+    let tDiff = new Date().getTime() - timeStart;
+
+    diff += tDiff;
+    this.uniforms.durationDelta.value += diff/1000;
+    if(diff > binNow.duration*1000){
+      this.uniforms.durationDelta.value = 0;
+      //console.log('diff',diff,binNow.duration*1000)
+      diff = 0;
+      timeStart = new Date().getTime();
+      durNow = ((timeStart - playbackMeta.timestamp) + playbackMeta.progress_ms)/1000;
+      this.updateProgressBar(durNow,trackAnalysis.track.duration);
+      let drifted = trackAnalysis.segments.find((d,i)=>{
+        d.index = i;
+        return d.start >= durNow && durNow <= (d.start+d.duration);
+      });
+      //console.log('durations',trackAnalysis.track.duration , durNow);
+      if(typeof drifted == "undefined" || trackAnalysis.track.duration < durNow){
+        //might be new track..
+        clearInterval(timeout);
+        /*
+        console.log('durnow = ',durNow);
+        console.log('meta',playbackMeta);*/
+        //setTimeout(()=>{
+        if(durNow < trackAnalysis.track.duration){
+          //console.log('track is done but time is less',trackAnalysis.track.duration , durNow,(trackAnalysis.track.duration - durNow)*1000 + 4000)
+          setTimeout(()=>{
+            this.getCurrentTrackInfo();
+          },(trackAnalysis.track.duration - durNow)*1000 + 4000);
+        }
+        else{
+          //console.log('track is done, time is more')
+          this.getCurrentTrackInfo();
+        }
+          /*this.spotifyApi.skipToNext().then(()=>{
+            this.getCurrentTrackInfo();
+          })*/
+          
+        //},5000)
+      }
+      else{
+        binIndex = drifted.index;
+        doNextBin();
+      }
+      
+    }
+  },10)
+  this.vizInterval = timeout;
+  doNextBin();
+  
+
+  function doNextBin(){
+    //console.log('nextbin',binNow.duration,binNow.duration*1000);
+    //let callD = new Date().getTime();
+    //binNow = trackAnalysis.segments[binNow.index+1]
+    if(typeof trackAnalysis.segments[binIndex+1] != "undefined"){
+      //setTimeout(()=>{
+      //console.log('bin ticking');
+      //let timeout = setExactTimeout(()=>{
+      //console.log('complete');
+      binIndex++;
+      binNow = trackAnalysis.segments[binIndex];
+      binData = binNow.pitches.map((pitch,i)=>{
+        return pitch * binNow.timbre[i];
+      });
+      binNext = typeof trackAnalysis.segments[binIndex+1] != "undefined" ? trackAnalysis.segments[binIndex+1] : binNow;
+      binNextData = binNext.pitches.map((pitch,i)=>{
+        return pitch * binNext.timbre[i] * 100 * binNext.loudness_max;
+      });
+      _this.freqDomain = binData;
+      _this.freqDomainNext = binNextData;
+      _this.freqDuration = binNow.duration;
+      _this.uniforms.duration.value = _this.freqDuration;
+      _this.updateAnalyserData();
+      
+      //_this.uniforms.durationDelta.value = 0.0;
+      let binComp = new Date().getTime();
+      //console.log('timediff',binComp - callD);
+      //clearExactTimeout(timeout);
+      //doNextBin();
+          //tick.stop();
+        
+
+      //},Math.floor(binNow.duration*1000),100);
+      //console.log('did set');
+      /*tick.start(binNow.duration*1000);
+      this.tick = tick;*/
+      //},binNow.duration*1000);
+    }
+    else{
+      /*clearInterval(timeout);
+      setTimeout(()=>{
+        _this.getCurrentTrackInfo();
+      },2000)*/
+    }
+  }
+}
 GrandFinale.prototype.initFlatFrequency = function(){
   this.flatSVG = d3.select('.flatFrequency svg')
     .attr('width',$('.flatFrequency').width())
@@ -192,97 +479,27 @@ GrandFinale.prototype.initFlatFrequency = function(){
     .domain([0,1024])
     .range([$('.flatFrequency').height()*0.05,$('.flatFrequency').height()*0.95]);
 }
-GrandFinale.prototype.resolveTrack = function(track_url){
-  var _this = this;
-  SC.get('/resolve', { url: track_url }, function(sound,err) {
 
-    console.log('resolved track',sound,err);
-    if(sound == null && err){
-      //error loading track
-      if(err.message){
-        if(err.message.indexOf('403') >= 0){
-          alert('Uh-oh: This SoundCloud Artist does not permit Data API Sharing. Try Another Song.')
-        }
-        else{
-          alert('ERROR LOADING SOUNDCLOUD RESOURCE');
-        }
-      }
-    }
-    if (sound.errors) {
-        
-        //errorCallback();
-        console.log('trackurl',track_url )
-        console.error('error',sound.errors);
-        //alert('error finding track')
-    } else {
-        if(sound.kind=="playlist"){
-          _this.soundCloudStream = sound;
-          _this.currentTrack = sound;
-          _this.isPlaylist = true;
-          _this.streamUrl = function(){
-              return sound.tracks[_this.streamPlaylistIndex].stream_url + '?client_id=' + _this.clientID;
-          }
-          _this.player.setAttribute('src', _this.streamUrl());
-          _this.finishedLoading(_this.player);
-          _this.setUIMeta();
-        }else{
-          _this.soundCloudStream = sound;
-          _this.currentTrack = sound;
-          _this.isPlaylist = false;
-          _this.streamUrl = function(){ return sound.stream_url + '?client_id=' + _this.clientID; };
-          _this.player.setAttribute('src', _this.streamUrl());
-          _this.finishedLoading(_this.player);
-          console.log('success making sound!',sound);
-
-          _this.setUIMeta();
-          
-        }
-    }
-  });
-}
 GrandFinale.prototype.setUIMeta = function(){
   //stub, where we display song meta info.
   var _this = this;
-  var streamIndex = this.streamPlaylistIndex || 0;
-  var currentTrack = this.isPlaylist ? this.currentTrack.tracks[streamIndex] : this.currentTrack;
-  var linkTrack = $('<a class="trackTitle" href="'+currentTrack.permalink_url+'" target="_blank">'+currentTrack.title+'</a>')
-  var linkArtist = $('<a class="trackArtist" href="'+currentTrack.user.permalink_url+'" target="_blank">'+currentTrack.user.username+'</a>')
-  $('.nowPlaying .trackName').html(linkTrack);
-  $('.nowPlaying .trackName').append(' | ');
-  $('.nowPlaying .trackName').append(linkArtist);
-  //$('.nowPlaying .trackURL input').val(currentTrack.permalink_url)
-  var duration = currentTrack.duration/1000;
-  var m = Math.floor(duration/60);
-  if(m < 10){
-    m = '0'+m;
-  }
-  var ds = Math.floor(duration % 60);
-  if(ds < 10){
-    ds = '0'+ds;
-  }
-  $('.nowPlaying .duration').html(m+':'+ds)
-  var nowPlayingTime = this.player.currentTime;
-  var currentlyPaused = this.player.paused;
-  /*if(currentlyPaused){
-    $('.nowPlaying .playPause').html('play').addClass('isPaused');
-  }
-  else{
-    $('.nowPlaying .playPause').html('pause').removeClass('isPaused');
-  }*/
+  
   $('.nowPlaying .playPause').off('click').on('click',function(){
-    if(_this.player.paused){
-      _this.player.play();
-      
-      setTimeout(function(){_this.startTour();},10000);
+    console.log("CLICK PLAY");
+    $('#loginToSpotify').removeClass('showing')
+    
+    if($(this).hasClass('isPaused')){
+      _this.getCurrentTrackInfo();
       $(this).html('pause').removeClass('isPaused')
-      startTO();
+      setTimeout(function(){_this.startTour();},2000);
     }
     else{
-      _this.player.pause();
-      $(this).html('play').addClass('isPaused')
+      _this.spotifyApi.pause();
+      clearInterval(_this.vizInterval);
       _this.cancelCameraTrack = true;
-      clearTO()
+      $(this).html('play').addClass('isPaused');
     }
+
   });
   $('.trackURL .go').off('click').on('click',function(){
     if($('.trackURL input').val() != ''){
@@ -291,37 +508,40 @@ GrandFinale.prototype.setUIMeta = function(){
       window.location.reload();
     }
   });
-  function startTO(){
-    clearTO();
-    _this.uiTimer = setInterval(function(){
-      var val = _this.player.currentTime;
-      var s = Math.floor(val);
-      var perc = s / duration;
-      perc = Math.floor(perc * 100);
-      var percAdd = perc+1 > 100 ? 100 : perc+1;
-      var bsString = 'linear-gradient(to right, rgba(255,255,255,0.5) 0%,rgba(255,255,255,0.5) '+(perc)+'%,rgba(255,255,255,0) '+(perc)+'%,rgba(255,255,255,0) 100%)'
-      $('.nowPlaying .currentBar').css('background',bsString);
-      var m = 0;
-      var s = Math.floor(val % 60);
-      if(s < 10){
-        s = '0'+s;
-      }
-      if(val > 60){
-        m = Math.floor(val / 60);
-        if(m < 10){
-          m = '0'+m;
-        } 
-      }
-      $('.nowPlaying .currentTime').html(m+':'+s)
+  
 
-    },1000);
+}
+GrandFinale.prototype.updateProgressBar = function(durationNow,trackDuration){
+  var val = durationNow;
+  var s = trackDuration;
+  var perc = val / trackDuration;
+  perc = Math.floor(perc * 100);
+  var percAdd = perc+1 > 100 ? 100 : perc+1;
+  var bsString = 'linear-gradient(to right, rgba(255,255,255,0.5) 0%,rgba(255,255,255,0.5) '+(perc)+'%,rgba(255,255,255,0) '+(perc)+'%,rgba(255,255,255,0) 100%)'
+  $('.nowPlaying .currentBar').css('background',bsString);
+  var m = 0;
+  var s = Math.floor(val % 60);
+  if(s < 10){
+    s = '0'+s;
   }
-  function clearTO(){
-    if(typeof _this.uiTimer != "undefined"){
-      clearInterval(_this.uiTimer);
-    }
+  if(val > 60){
+    m = Math.floor(val / 60);
+    if(m < 10){
+      m = '0'+m;
+    } 
   }
+  $('.nowPlaying .currentTime').html(m+':'+s)
 
+  var duration = trackDuration;
+  var dm = Math.floor(duration/60);
+  if(dm < 10){
+    dm = '0'+dm;
+  }
+  var ds = Math.floor(duration % 60);
+  if(ds < 10){
+    ds = '0'+ds;
+  }
+  $('.nowPlaying .duration').html(dm+':'+ds)
 }
 //_sourceList = [];
 GrandFinale.prototype.finishedLoading = function(bufferList) {
@@ -359,30 +579,7 @@ GrandFinale.prototype.finishedLoading = function(bufferList) {
 }
 GrandFinale.prototype.start = function(){
   var _this = this;
-  /*var i = 0.0;
-  var z = Math.sqrt(Math.pow(512,2),Math.pow(512,2))
-  var cameraStart = this.camera.position.clone();
-  var cameraEnd = new THREE.Vector3(-z,-z,0);
-  this.camera.lookAt(new THREE.Vector3(0,0,0));
-  go();
-
-  function go(){
-    i += 0.1;
-    
-    if(i < 1.0){
-    window.requestAnimationFrame(function(){
-      go();
-    });
-    }
-    if(i >= 1.0){
-      i = 1.0;
-      //_this.camera.up.set(0,0,1);
-    }
-    var newPos = cameraStart.lerp(cameraEnd,i);
-    console.log('new pos',newPos,cameraStart);
-    _this.camera.position.set(newPos.x,newPos.y,newPos.z);//newPos;
-
-  }*/
+  
   this.updateUniforms = true;
   this.updateUniformsValue = -0.0001;
   //this.camera.position.set(z,z,0);
@@ -412,7 +609,7 @@ GrandFinale.prototype.startCameraTrack = function(points){
       //increment to next point
       pointI = typeof points[pointI+1] == "undefined" ? 0 : pointI+1;
       toVal = 0;
-      console.log('pointi is now',pointI,points.length)
+      //console.log('pointi is now',pointI,points.length)
       posOut = points[pointI].position.clone();
       targetOut = points[pointI].target.clone();
       posIn = _this.camera.position.clone();
@@ -441,10 +638,13 @@ GrandFinale.prototype.setupParticles = function(data){
     zeroTexture: { value: new THREE.TextureLoader().load( "img/zero.png")},
     oneTexture: { value: new THREE.TextureLoader().load( "img/one.png")},
     
-    ringColor: {value: new THREE.Vector3(0.996078431372549,0,0.820299884659746)},
-    isRingLinear:{value:false},
+    //ringColor: {value: new THREE.Vector3(0.996078431372549,0,0.820299884659746)},
+    ringColor: {value: new THREE.Vector3(0.5490196078431373, 0.11841599384851982, 0.4730307347852635)},
+    isRingLinear:{value:true},
     isRing:{value:true},
-    isSpherical: {value:false}
+    isSpherical: {value:false},
+    duration: {value:0.0},
+    durationDelta: {value:0.0}
   };
   var color = new THREE.Color();
   color.r = this.uniforms.ringColor.value.x;
@@ -528,10 +728,12 @@ GrandFinale.prototype.setupParticles = function(data){
   this.pointGeometry.addAttribute( 'customColor', new THREE.BufferAttribute( colors, 3 ) );
   this.pointGeometry.addAttribute( 'size', new THREE.BufferAttribute(sizes,1));
   this.pointGeometry.addAttribute( 'alpha', new THREE.BufferAttribute(alpha,1));
+  this.pointGeometry.addAttribute( 'alphaNext', new THREE.BufferAttribute(alpha,1));
   this.pointGeometry.addAttribute( 'sphericalPosition',new THREE.BufferAttribute(sphericalPositions,3));
   this.pointGeometry.addAttribute( 'ringPosition',new THREE.BufferAttribute(ringPositions,3));
   this.pointGeometry.addAttribute( 'flatPosition',new THREE.BufferAttribute(flatPositions,3));
   this.pointGeometry.addAttribute( 'frequency',new THREE.BufferAttribute(frequencies,1));
+  this.pointGeometry.addAttribute( 'frequencyNext',new THREE.BufferAttribute(frequencies,1));
   this.pointGeometry.addAttribute( 'character',new THREE.BufferAttribute(character,1));
   this.pointGeometry.computeBoundingSphere();
   var material = new THREE.PointsMaterial( { size: 15, vertexColors: THREE.VertexColors } );
@@ -573,45 +775,78 @@ GrandFinale.prototype.updateAnalyserData = function(){
   if(typeof this.freqDomain == "undefined"){
     return false;
   }
-  _this.analyser.getByteFrequencyData(_this.freqDomain);
+  //_this.analyser.getByteFrequencyData(_this.freqDomain);
   if(typeof this.frequencyScale == "undefined"){
     this.frequencyScale = d3.scaleLinear();
     this.alphaScale = d3.scaleLinear();
+
+    this.frequencyScaleNext = d3.scaleLinear();
+    this.alphaScaleNext = d3.scaleLinear();
     
   }
   var filter = Array.prototype.filter;
   var allFreq = this.freqDomain;//.subarray()
-
+  let allFreqNext = this.freqDomainNext;
+  let frequenciesNext;
   if(_this.useAllFrequencies){
     var frequencies = this.freqDomain;
+    frequenciesNext = this.freqDomainNext;
   }
   else{
     var frequencies  = /*this.freqDomain;*/ filter.call(this.freqDomain,function(x,i){
       return x > 0;
     });
+    frequenciesNext = filter.call(this.freqDomainNext,function(x,i){
+      return x > 0;
+    });
   }
+
   if(_this.reverseFrequencies){
-    frequencies = frequencies.reverse();
+    frequencies = frequencies.slice(0).reverse();
+    frequenciesNext = frequenciesNext.slice(0).reverse();
   }
-  _this.flatSVGXScale.domain([0,frequencies.length]);
+
+  
   //var frequencies = this.freqDomain;
   var lineScaleMin = d3.min(frequencies);
   var lineScaleMax = d3.max(frequencies);
+
+  var lineScaleMinNext = d3.min(frequenciesNext);
+  var lineScaleMaxNext = d3.max(frequenciesNext);
+
   this.flatSVGYScale.domain([lineScaleMin,lineScaleMax]);
   this.frequencyScale
     .domain([lineScaleMin,lineScaleMax])
     .range([0.01,0.01]);
+
+  this.frequencyScaleNext
+    .domain([lineScaleMinNext,lineScaleMaxNext])
+    .range([0.01,0.01]);
+
   var scaleMax = _this.useAllFrequencies ? 0.5 : 0.35;
+
   this.alphaScale
     .domain([lineScaleMin,lineScaleMax])
     .range([0.01,scaleMax])
     .clamp(true);
+
+  this.alphaScaleNext
+    .domain([lineScaleMinNext,lineScaleMaxNext])
+    .range([0.01,scaleMax])
+    .clamp(true);
+
   var len = this.pointGeometry.attributes.frequency.array.length;
+
   for(i=0;i<len;i++){
     var val = frequencies[/*Math.floor(Math.random()*frequencies.length)*/ Math.floor(i/1024/1024*frequencies.length)/*i % frequencies.length*/];
-    this.pointGeometry.attributes.frequency.array[i] = _this.frequencyScale(val);
+    var valNext = frequenciesNext[Math.floor(i/1024/1024*frequenciesNext.length)];
+
+    //this.pointGeometry.attributes.frequency.array[i] = _this.frequencyScale(val);
+    //this.pointGeometry.attributes.frequencyNext.array[i] = _this.frequencyScaleNext(valNext);
+
     if(this.uniforms.isRing.value){
       this.pointGeometry.attributes.alpha.array[i] = this.alphaScale(val);
+      this.pointGeometry.attributes.alphaNext.array[i] = this.alphaScaleNext(valNext) * 1.5 ;
     }
     /*else{
       if(!this.uniforms.isSpherical.value){
@@ -621,17 +856,25 @@ GrandFinale.prototype.updateAnalyserData = function(){
   }
   if(this.uniforms.isRing.value)
     _this.pointGeometry.attributes.alpha.needsUpdate = true;
-  
-  _this.pointGeometry.attributes.frequency.needsUpdate = true;
+    _this.pointGeometry.attributes.alphaNext.needsUpdate = true;
+    //_this.pointGeometry.attributes.frequency.needsUpdate = true;
+    //_this.pointGeometry.attributes.frequencyNext.needsUpdate = true;
   /*if(typeof _this.hasUpdatedFrequencies == "undefined"){
     _this.hasUpdatedFrequencies = true;
     _this.pointGeometry.attributes.alpha.needsUpdate = true;
     _this.pointGeometry.attributes.frequency.needsUpdate = true;
   }*/
-  if(!_this.player.paused){
+  //if(!_this.player.paused){
+    let stretchedDomain = [];
+    this.freqDomain.map(v=>{
+      for(let i=0;i<Math.floor(256/this.freqDomain.length);i++){
+        stretchedDomain.push(v);
+      }
+    })
+    _this.flatSVGXScale.domain([0,stretchedDomain.length]);
     var lines = this.flatSVG.select('g.lineGroup')
       .selectAll('line')
-      .data(this.freqDomain);
+      .data(stretchedDomain/*this.freqDomain*/);
     lines
       .attr('x1',function(d,i){
         return _this.flatSVGXScale(i);
@@ -665,16 +908,25 @@ GrandFinale.prototype.updateAnalyserData = function(){
         return diff + _this.flatSVGYScale(d);
       });
     lines.exit().remove();
-  }
+  //}
 }
 GrandFinale.prototype.animate = function(){
   var _this = this;
+  /*if(typeof this.clock == "undefined"){
+    this.clock = new THREE.Clock();
+  }*/
   if(this.updateUniforms){
     if(this.uniforms.amplitude.value <= -0.47 || this.uniforms.amplitude.value >= 0.47){
       this.updateUniformsValue *= -1;
     }
     this.uniforms.amplitude.value += this.updateUniformsValue;
+
   }
+  /*if(typeof this.uniforms != "undefined"){
+    this.uniforms.durationDelta.value += this.clock.getDelta();
+    //console.log('uniform delta',this.uniforms.durationDelta.value,this.uniforms.duration.value);
+  }*/
+  
   this.animationFrame = window.requestAnimationFrame(function(){
     _this.animate();
   });
@@ -744,7 +996,8 @@ GrandFinale.prototype.initDatGui = function(){
     toggleRightAlignedBlurb: function(){
       $('#blurbArea').addClass('rightAligned').toggle();
     },*/
-    ringColor:[0.996078431372549*255,0,0.820299884659746*255],
+    //ringColor:[0.996078431372549*255,0,0.820299884659746*255],
+    ringColor:[0.5490196078431373*255, 0.11841599384851982*255, 0.4730307347852635*255],
     useAllRingFrequencies: _this.useAllFrequencies,
     reverseFrequencies: _this.reverseFrequencies,
     LinearOrMagnetizeRings: _this.uniforms.isRingLinear.value,
@@ -794,6 +1047,7 @@ GrandFinale.prototype.initDatGui = function(){
     _this.uniforms.ringColor.value = new THREE.Vector3(val[0]/255,val[1]/255,val[2]/255);
     var color = new THREE.Color();
     $('.playPause').css('background','rgba('+val[0]+','+val[1]+','+val[2]+',0.2)')
+    //$('.flatFrequency svg line.flatLine').css('stroke','rgba('+val[0]+','+val[1]+','+val[2]+',1.0 )')
     color.r = _this.uniforms.ringColor.value.x;
     color.g = _this.uniforms.ringColor.value.y;
     color.b = _this.uniforms.ringColor.value.z;
@@ -833,4 +1087,47 @@ GrandFinale.prototype.initDatGui = function(){
   gui.add(guiParams,'startGuidedTour');
   gui.add(guiParams,'stopGuidedTour');
   gui.close();
+}
+
+GrandFinale.prototype.getSpotifyVerifier = function(){
+  // GENERATING CODE VERIFIER
+  function dec2hex(dec) {
+    return ("0" + dec.toString(16)).substr(-2);
+  }
+  function generateCodeVerifier() {
+    var array = new Uint32Array(56 / 2);
+    window.crypto.getRandomValues(array);
+    return Array.from(array, dec2hex).join("");
+  }
+  return generateCodeVerifier();
+}
+GrandFinale.prototype.getSpotifyChallenge = function(verifier){
+  function sha256(plain) {
+    // returns promise ArrayBuffer
+    const encoder = new TextEncoder();
+    const data = encoder.encode(plain);
+    return window.crypto.subtle.digest("SHA-256", data);
+  }
+
+  function base64urlencode(a) {
+    var str = "";
+    var bytes = new Uint8Array(a);
+    var len = bytes.byteLength;
+    for (var i = 0; i < len; i++) {
+      str += String.fromCharCode(bytes[i]);
+    }
+    return btoa(str)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  }
+
+  async function generateCodeChallengeFromVerifier(v) {
+    var hashed = await sha256(v);
+    var base64encoded = base64urlencode(hashed);
+    return base64encoded;
+  }
+
+  return generateCodeChallengeFromVerifier(verifier);
+  
 }
