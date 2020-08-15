@@ -1,0 +1,40 @@
+{
+  "name": "spotify-web-api-js",
+  "description": "A client-side JS wrapper for the Spotify Web API",
+  "version": "1.5.1",
+  "homepage": "https://github.com/JMPerez/spotify-web-api-js",
+  "author": {
+    "name": "José M. Pérez"
+  },
+  "ignore": [
+    "__tests__",
+    "README.md",
+    ".travis.yml",
+    ".gitignore",
+    ".jshintrc",
+    "bower.json",
+    "LICENSE",
+    "package.json",
+    "README.md",
+    "**/.*",
+    "node_modules",
+    "bower_components"
+  ],
+  "authors": [
+    "jmperez1985@gmail.com"
+  ],
+  "main": "src/spotify-web-api.js",
+  "keywords": [
+    "spotify"
+  ],
+  "license": "MIT",
+  "_release": "1.5.1",
+  "_resolution": {
+    "type": "version",
+    "tag": "v1.5.1",
+    "commit": "81f1a77461e02f2f73a284f092de0a76bfa925d5"
+  },
+  "_source": "https://github.com/JMPerez/spotify-web-api-js.git",
+  "_target": "^1.5.1",
+  "_originalSource": "spotify-web-api-js"
+}
