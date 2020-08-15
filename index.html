@@ -2,13 +2,12 @@
 <head>
 <link rel="stylesheet" type="text/css" href="css/main.css" />
 <script src="bower_components/three.js/three.min.js"></script>
-<script src="bower_components/threejs-trackball-controls/TrackballControls.js"></script>
+<script src="js/TrackballControls.js"></script>
 <script src="bower_components/jquery/dist/jquery.min.js"></script>
 <script src="bower_components/d3/d3.min.js"></script>
 <script src="https://d3js.org/d3-geo-projection.v2.min.js"></script>
-<script src="https://connect.soundcloud.com/sdk/sdk-3.3.2.js"></script>
+<script src="bower_components/spotify-web-api-js/src/spotify-web-api.js"></script>
 <script src="bower_components/dat.gui/dat.gui.min.js"></script>
-<script src="bower_components/tuna/tuna-min.js"></script>
 <script src="js/main.js"></script>
 <script type="x-shader/x-vertex" id="vertexshader">
   attribute float size;
@@ -16,7 +15,9 @@
   attribute vec3 sphericalPosition;
   attribute vec3 flatPosition;
   attribute float frequency;
+  attribute float frequencyNext;
   attribute float alpha;
+  attribute float alphaNext;
   attribute float character;
   attribute vec3 ringPosition;
   uniform float amplitude;
@@ -24,30 +25,38 @@
   uniform vec3 ringColor;
   uniform bool isRingLinear;
   uniform bool isRing;
+  uniform float duration;
+  uniform float durationDelta;
   varying vec3 vColor;
   varying float alphaState;
   varying float isRingMode;
   varying float characterState;
   float PI = 3.141517;
   void main() {
+    float durationLerpValue = durationDelta / duration;
+
+    float alphaNow = mix(alpha,alphaNext,durationLerpValue);
+
+    float frequencyNow = frequency;//mix(frequency,frequencyNext,durationLerpValue);
+
     if(isRing){
       isRingMode = 1.0;
     }
     else{
       isRingMode = 0.0;
     }
-    alphaState = alpha;
+    alphaState = alphaNow;
     characterState = character;
     vColor = customColor;
     if(isRing){
       alphaState = 0.5;
-      if(alpha <= 0.1){
+      if(alphaNow <= 0.1){
         vColor = vec3(0.08,0.08,0.08);
       }
       else{
         alphaState = 0.5;
         //vColor = vec3(alpha,0.07843,alpha*0.6705);
-        vColor = vec3(alpha*ringColor.x,alpha*ringColor.y,alpha*ringColor.z);
+        vColor = vec3(alphaNow*ringColor.x,alphaNow*ringColor.y,alphaNow*ringColor.z);
       }
     }
     vec3 newPosition = position;
@@ -72,18 +81,19 @@
       float y = cos(ringPosition.y) * ringPosition.x;
       float z = 0.0;
       newPosition = vec3(x,y,x);
-      if(alpha <=0.1){
+      if(alphaNow <=0.1){
+        //newPosition.z = cos(distance(newPosition,vec3(0.0,0.0,0.0))) * (128.0*amplitude);
         newPosition.z = cos(distance(newPosition,vec3(0.0,0.0,0.0))) * (128.0*amplitude);
       }
       else{
         if(isRingLinear){
-          newPosition.z = 56.0*alpha;
+          newPosition.z = 56.0*alphaNow;
         }
         else{
-          newPosition.z = cos(distance(newPosition,vec3(0.0,0.0,0.0))) * (128.0*alpha);
+          newPosition.z = cos(distance(newPosition,vec3(0.0,0.0,0.0))) * (128.0*alphaNow);
         }
         //newPosition.z = 56.0*alpha;
-        newPosition.z = cos(distance(newPosition,vec3(0.0,0.0,0.0))) * (128.0*alpha);
+        newPosition.z = cos(distance(newPosition,vec3(0.0,0.0,0.0))) * (128.0*alphaNow);
       }
       
     }
@@ -147,7 +157,43 @@
 </head>
 <body>
 <div id="viz"></div>
-<audio id="soundcloudPlayer" controls="" preload autobuffer></audio>
+<!-- <audio id="soundcloudPlayer" controls="" preload autobuffer></audio> -->
+<div id="loginToSpotify">
+  <div id="loginPage">
+    <div class="logo">
+      <img src="./img/spotify/Spotify_Logo_RGB_White.png" class="logo" />
+    </div>
+    This Visualization is powered thru the Spotify API.<br /><br />
+    In order to use this Visualizer, you will first need to login to Spotify and grant this application permissions to:
+    <ul>
+      <li>Play/Pause the current track</li>
+      <li>Get the current track metadata</li>
+      <li>Get the current play position of the playing track</li>
+      <li>Get audio analysis about the current track to visualize</li>
+    </ul>
+    <br />
+    The Spotify access token is stored locally on your browser localStorage sandbox, thus not available to anybody expect you.
+    
+    <div id="login">
+      <div class="button">
+        Login to Spotify
+      </div>
+    </div>
+  </div>
+  <div id="instruction">
+    <div class="logo">
+      <img src="./img/spotify/Spotify_Logo_RGB_White.png" class="logo" />
+    </div>
+    Congratulations! You have authorized Grand Finale Visualizer to use Spotify API.<br />
+    How to use the Visualizer:
+    <ul>
+      <li>Open the Spotify App on your phone, computer, or other device.</li>
+      <li>Queue up a song or playlist</li>
+      <li>click play in the Spotify App</li>
+      <li>Visualizer will pick up</li>
+    </ul>
+  </div>
+</div>
 <div id="blurbArea">
   <div class="body">
     <div class="img">
@@ -160,21 +206,23 @@
   </div>
 </div>
 <div class="bottomNav">
+  <div id="bottomLogo">
+    Powered By
+    <img src="./img/spotify/Spotify_Logo_RGB_White.png" />
+  </div>
   <div class="nowPlaying">
     <div class="trackWrap">
+      <div class="trackImage"></div>
       <div class="trackName"></div>
-      <div class="trackURL">
-        <input type="text" placeholder="Paste a SoundCloud Song or Playlist URL" value="" />
-        <div class="go">go</div>
+      <div class="trackMetrics">
+        <div class="currentTime">00:00</div>
+        <div class="currentBar"></div>
+        <div class="duration">00:00</div>
       </div>
     </div>
     
-    <div class="trackMetrics">
-      <div class="currentTime">00:00</div>
-      <div class="currentBar"></div>
-      <div class="duration">00:00</div>
-    </div>
-    <div class="playPause isPaused">play</div>
+    
+    <div class="playPause isPaused">connect</div>
     
 
   </div>
@@ -185,7 +233,16 @@
     </div>
     
   </div>
-  <div class="poweredBy"><a href="https://soundcloud.com" target="_blank"></a></div>
+
+</div>
+<div id="skipNav">
+    <div class="button" id="prev">&#9654;</div>
+    <div class="button" id="next">&#9654;</div>
+  </div>
+<div id="errorMessage">
+  <div id="message"></div>
+  <div id="resolution"></div>
+  <div id="close">x</div>
 </div>
 </body>
 </html>

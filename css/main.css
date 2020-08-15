@@ -55,7 +55,7 @@ html,body{
 
 .bottomNav{
   width:100%;
-  height:15%;
+  height:128px;
   float:left;
   position:absolute;
   left:0;
@@ -91,16 +91,17 @@ html,body{
 }
 .flatFrequency{
   float:left;
-  width:calc(80%);
-  margin-left:calc(10% - 1px);
+  width:calc(100% - 133px - 120px);
+  margin-left:133px;
   background:rgba(255,255,255,0.0);
   height:40%;
   border-left: 1px solid rgba(255,255,255,0.5);
-  border-right: 1px solid rgba(255,255,255,0.5);;
+  border-right: 1px solid rgba(255,255,255,0.5);
+  margin-top:8px;
 }
 
 .flatFrequency svg line.flatLine{
-  stroke:#fff;
+  stroke:#aaa;
   stroke-dasharray: 1 3;
 }
 
@@ -111,13 +112,15 @@ html,body{
 }
 .trackWrap{
   float:left;
-  width:80%;
-  margin-left:10%;
-  margin-right:10%;
+  width:calc(100% - 133px - 50px);
+  margin-left:133px;
 }
 .trackName{
-  width:50%;
+  width:90%;
   float:left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .trackURL input{
   width:80%;
@@ -137,19 +140,22 @@ html,body{
 }
 .trackMetrics{
   float:left;
-  width:100%;
+  width: 100%/*calc(100% - 128px - 50px)*/;
   height: 10px;
+  margin-top:6px;
+  /*margin-left:128px;*/
 }
 .currentBar{
-  width: 80%;
+  width: 76%;
   height: 1px;
   padding: 3px 0px;
   float: left;
   margin-top: 6px;
+  transition: background 0.1s linear;
 }
 .duration, .currentTime{
   float:left;
-  width:calc(10% - 11px);
+  width:calc(8% - 11px);
 }
 .duration{
   border-left:1px solid rgba(255,255,255,0.5);
@@ -174,8 +180,8 @@ html,body{
   font-size:12px;
   color:#ccc;
   font-weight:100;
-  margin-left: calc(5% - 50px);
-  margin-top: calc(5% - 42px);
+  right: 36px/*calc(9% - 50px)*/;
+  margin-top: calc(7% - 42px)/*calc(7% - 42px)*/;
   position:absolute;
   transition: all 0.2s linear;
 }
@@ -205,6 +211,15 @@ html,body{
   cursor:pointer;
   margin: 3px 5px;
 }
+.trackImage{
+  position:absolute;
+  top:5px;
+  left:0px;
+}
+.trackImage img{
+  float:left;
+  width:128px;
+}
 a.trackTitle, a.trackArtist{
   text-decoration:none;
   color:#ccc;
@@ -218,8 +233,12 @@ a.trackArtist{
   font-weight:100;
   color:#ccc;
 }
+.artistName{
+  margin-top:3px;
+  color:#ccc;
+}
 .bottomNav:hover .trackURL{
-  opacity:1.0;
+  opacity:0.0;
 }
 
 .poweredBy{
@@ -241,4 +260,128 @@ a.trackArtist{
   width:104px;
   height:32px;
   background-size: 104px 32px;
+}
+
+#loginToSpotify{
+  position:absolute;
+  width: 40%;
+  z-index:20;
+  height:auto;
+  left:calc(30% - 20px);
+  background:rgba(21,21,21,0.8);
+  padding: 20px;
+  border-radius: 0px 0px 20px 20px;
+  border: 1px solid #333;
+  transition: top 0.2s linear;
+  top: calc(-100% - 50px);
+}
+#loginToSpotify.showing{
+  top:0px;
+}
+#loginToSpotify.instructionShowing{
+  height: auto;
+}
+#loginToSpotify #instruction{
+  display:none;
+}
+#loginToSpotify div.logo{
+  float:left;
+  width:100%;
+  clear:both;
+  text-align:center;
+  margin-bottom: 20px;
+}
+#loginToSpotify img.logo{
+  height: 50px;
+}
+#loginToSpotify img.icon{
+  width:15px;
+  height:15px;
+}
+#loginToSpotify #login{
+  float:left;
+  width:calc(100% - 40px);
+  text-align:center;
+  margin-top:20px;
+  padding: 0 20px;
+}
+#loginToSpotify #login .button{
+  padding: 10px;
+  background: rgba(255,255,255,0.25);
+  cursor:pointer;
+  transition: background 0.2s linear;
+}
+#loginToSpotify #login .button:hover{
+  background: rgba(255,255,255,0.5);
+}
+
+/*
+<div id="errorMessage">
+  <div id="message"></div>
+  <div id="resolution"></div>
+  <div id="close">x</div>
+</div>
+*/
+#errorMessage{
+  position:absolute;
+  z-index:20;
+  top: 10px;
+  left:10px;
+  padding:10px;
+  background:rgba(21,21,21,0.8);
+  border: 1px solid #333;
+  display:none;
+}
+#errorMessage #close{
+  position:absolute;
+  top:0px;
+  right:0px;
+  padding:3px;
+  background:#000;
+  cursor:pointer;
+  margin: 1px 1px 0 0;
+}
+#skipNav{
+  float:right;
+  position:absolute;
+  bottom: 5px;
+  right:9px;
+  margin-right:5px;
+}
+#skipNav .button{
+  float:left;
+  margin:10px 5px 5px;
+  padding: 10px;
+  text-align: center;
+  color:#eee;
+  background:rgba(255,255,255,0.1);
+  transition: background 0.1s linear;
+  cursor:pointer;
+  border-radius: 25px;
+  z-index:20;
+  width:15px;
+  height:15px;
+  line-height:19px;
+}
+#skipNav .button#prev{
+  line-height: 19px;
+  transform: rotate(180deg);
+}
+#skipNav .button:hover{
+  background: rgba(255,255,255,0.25);
+}
+#bottomLogo{
+  color:#aaa;
+  font-size:10px;
+  text-align:right;
+  position:absolute;
+  top: -12px;
+  right:5px;
+  width: 100px;
+}
+#bottomLogo img{
+  float:left;
+  clear:both;
+  width:100%;
+  margin-top:3px;
 }
