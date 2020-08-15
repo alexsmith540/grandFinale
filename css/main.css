@@ -181,7 +181,7 @@ html,body{
   color:#ccc;
   font-weight:100;
   right: 36px/*calc(9% - 50px)*/;
-  margin-top: calc(7% - 42px)/*calc(7% - 42px)*/;
+  margin-top: 28px/*calc(7% - 42px)*/;
   position:absolute;
   transition: all 0.2s linear;
 }
