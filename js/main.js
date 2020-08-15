@@ -42,7 +42,7 @@ var GrandFinale = function($el){
   
   this.spotifyVerif = localStorage.getItem('verifier');
 
-  if(typeof localStorage.getItem('tokenExpires') != null){
+  if(localStorage.getItem('tokenExpires') != null){
     let expires = parseInt(localStorage.getItem('tokenExpires'));
     if(expires < new Date().getTime()){
       //has expired
@@ -56,11 +56,11 @@ var GrandFinale = function($el){
       let diff =  expires - new Date().getTime() - 2000;
       if(diff > 0){
         setTimeout(()=>{
-          this.refreshToken();
+          this.refreshSpotifyToken();
         },diff)
       }
       else{
-        this.refreshToken();
+        this.refreshSpotifyToken();
       }
     }
   }
@@ -81,7 +81,7 @@ var GrandFinale = function($el){
       localStorage.setItem('spotifyRefreshCode',refreshToken);
       localStorage.setItem('tokenExpires',expires);
       setTimeout(()=>{
-        this.refreshToken();
+        this.refreshSpotifyToken();
       },(data.expires_in-10) * 1000)
       $('#loginToSpotify #instruction').show();
       $('#loginToSpotify #loginPage').hide();
@@ -277,7 +277,7 @@ GrandFinale.prototype.refreshSpotifyToken = function(){
     localStorage.setItem('tokenExpires',expires);
     setTimeout(()=>{
       console.log('to refresh token')
-      this.refreshToken();
+      this.refreshSpotifyToken();
     },(data.expires_in-10)*1000)
   })
 }
